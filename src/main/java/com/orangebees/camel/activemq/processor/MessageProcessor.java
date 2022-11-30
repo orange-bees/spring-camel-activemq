@@ -33,7 +33,7 @@ public class MessageProcessor implements Processor {
 
     @Override
     public void process(Exchange exchange) throws Exception {
-        log.info("Message Body: {}", exchange.getIn(String.class));
+        log.info("Message Body: {}", exchange.getIn().getBody(String.class));
     }
 
 }
