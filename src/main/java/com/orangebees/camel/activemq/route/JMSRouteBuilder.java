@@ -44,7 +44,7 @@ public class JMSRouteBuilder extends RouteBuilder {
     @Override
     public void configure() throws Exception {
         restConfiguration()
-                // turn on openapi api-doc
+                // turn on Open API documentation
                 .apiContextPath("/api-doc")
                 .apiProperty("api.title", "Apache Camel REST DSL")
                 .apiProperty("api.version", "1.1.0")
@@ -60,15 +60,13 @@ public class JMSRouteBuilder extends RouteBuilder {
             .produces("text/plain")
             .post("/dumpster")
             .consumes(MediaType.APPLICATION_XML_VALUE)
-//                .produces(MediaType.TEXT_PLAIN_VALUE)
-//                .outType(String.class)
             .to("direct:xmlProcessor");
 
         from("direct:hello")
-            .transform().constant("Hello World\n");
+            .transform().constant("Hello World\n", false);
 
         from("direct:bye")
-            .transform().constant("Bye World\n");
+            .transform().constant("Bye World\n", false);
 
         from("direct:xmlProcessor")
             .to(ExchangePattern.InOnly, "{{queue.input}}")

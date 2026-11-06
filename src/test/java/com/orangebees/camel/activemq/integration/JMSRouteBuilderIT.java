@@ -15,15 +15,21 @@
  */
 package com.orangebees.camel.activemq.integration;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Properties;
@@ -32,6 +38,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
@@ -72,6 +79,9 @@ public class JMSRouteBuilderIT {
     @Autowired
     private ConnectionFactory connectionFactory;
 
+    @Value("${local.server.port}")
+    private int httpPort;
+
     private static Properties loadTestProperties() {
         // The static container is configured before Spring creates the test context.
         try {
@@ -109,6 +119,55 @@ public class JMSRouteBuilderIT {
             assertInstanceOf(TextMessage.class, message, "Expected a JMS text message");
             assertEquals(body, ((TextMessage) message).getText());
         }
+    }
+
+    @Test
+    @Timeout(30)
+    public void restEndpointsTest() throws Exception {
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            HttpResponse<String> hello = client.send(httpRequest("/say/hello").GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, hello.statusCode());
+            assertEquals("Hello World\n", hello.body());
+
+            HttpResponse<String> bye = client.send(httpRequest("/say/bye")
+                    .header("Content-Type", "application/json").GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, bye.statusCode());
+            assertEquals("Bye World\n", bye.body());
+
+            HttpResponse<String> api = client.send(httpRequest("/api-doc").GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, api.statusCode());
+            assertTrue(api.body().contains("\"/say/hello\""), "OpenAPI must describe the hello endpoint");
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    public void restToJMSRouteTest() throws Exception {
+        String body = "<message>" + UUID.randomUUID() + "</message>";
+        try (HttpClient client = HttpClient.newHttpClient();
+                Connection connection = connectionFactory.createConnection();
+                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                MessageConsumer consumer = session.createConsumer(session.createQueue("outputQueue"))) {
+            connection.start();
+            HttpResponse<String> response = client.send(httpRequest("/say/dumpster")
+                    .header("Content-Type", "application/xml")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            assertEquals("", response.body());
+
+            Message message = consumer.receive(10000);
+            assertInstanceOf(BytesMessage.class, message, "Expected the HTTP payload as a JMS bytes message");
+            assertArrayEquals(body.getBytes(StandardCharsets.UTF_8), message.getBody(byte[].class));
+        }
+    }
+
+    private HttpRequest.Builder httpRequest(String path) {
+        return HttpRequest.newBuilder(URI.create("http://localhost:" + httpPort + path))
+                .timeout(Duration.ofSeconds(10));
     }
 
 }
