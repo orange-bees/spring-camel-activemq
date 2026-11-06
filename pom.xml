@@ -17,10 +17,11 @@
     <description>Spring Boot Camel ActiveMQ Integration Example Application</description>
 
     <properties>
-        <java.version>18</java.version>
-        <maven.compiler.source>18</maven.compiler.source>
-        <maven.compiler.target>18</maven.compiler.target>
+        <java.version>11</java.version>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
         <camel.version>3.19.0</camel.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <dependencies>
@@ -44,6 +45,13 @@
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
 
         
         <!-- Apache Camel -->
@@ -58,14 +66,36 @@
             <version>${camel.version}</version>
         </dependency>
 
-
         <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-rest-starter</artifactId>
+            <version>${camel.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-platform-http-starter</artifactId>
+            <version>${camel.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-openapi-java-starter</artifactId>
+            <version>${camel.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-jackson-starter</artifactId>
+            <version>${camel.version}</version>
+        </dependency>
+
+
+        <!--        <dependency>
             <groupId>org.apache.activemq</groupId>
             <artifactId>activemq-pool</artifactId>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <version>1.18.48</version>
         </dependency>
         <dependency>
             <groupId>javax.activation</groupId>
@@ -90,6 +120,12 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -113,85 +149,6 @@
                 </executions>
             </plugin>
             
-            <plugin>
-                <groupId>io.fabric8</groupId>
-                <artifactId>docker-maven-plugin</artifactId>
-                <version>0.40.2</version>
-                <configuration>
-                    <verbose>true</verbose>
-                    <images>
-                        <image>
-                            <alias>spring-camel-activemq</alias> 
-                            <name>orangebees/camel-spring:${project.version}</name>
-                            <build>
-                                <dockerFileDir>${project.basedir}/src/test/resources</dockerFileDir>
-                                <assembly>
-                                    <descriptorRef>artifact</descriptorRef>
-                                </assembly>
-                                <args>
-                                    <JAR_FILE>maven/${project.artifactId}.jar</JAR_FILE>
-                                </args>
-                            </build>
-                            
-                            <run>
-                                <links>
-                                    <link>activemq</link>
-                                </links>
-                                <log>
-                                    <date>ISO8601</date>
-                                    <color>blue</color>
-                                </log>
-                                <wait>
-                                    <time>10000</time>
-                                </wait>
-                                <dependsOn>
-                                    <container>activemq</container>
-                                </dependsOn>
-                                <entryPoint>
-                                    <exec>
-                                        <arg>java</arg>
-                                        <arg>-Dspring.profiles.active=test</arg>
-                                        <arg>-jar</arg>
-                                        <arg>/app.jar</arg>
-                                    </exec>
-                                </entryPoint>
-                            </run>                       
-                        </image>
-                        
-                        <image>
-                            <name>rmohr/activemq:5.15.9</name>
-                            <alias>activemq</alias>
-                            <run>
-                                <ports>
-                                    <port>8161:8161</port>
-                                    <port>61616:61616</port>
-                                </ports>
-                                <wait>
-                                    <log>(?s)ActiveMQ WebConsole available at http://0.0.0.0:8161/</log>
-                                    <time>30000</time>
-                                </wait>
-                            </run>
-                        </image>
-                    </images>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>start</id>
-                        <phase>pre-integration-test</phase>
-                        <goals>
-                            <goal>build</goal>
-                            <goal>start</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>stop</id>
-                        <phase>post-integration-test</phase>
-                        <goals>
-                            <goal>stop</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
 

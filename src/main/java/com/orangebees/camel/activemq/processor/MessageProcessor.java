@@ -18,6 +18,7 @@ package com.orangebees.camel.activemq.processor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
+import org.springframework.stereotype.Component;
 
 /**
  * An example processor that logs the message body.
@@ -26,13 +27,14 @@ import org.apache.camel.Processor;
  * @version 1.0.0
  */
 @Slf4j
+@Component
 public class MessageProcessor implements Processor {
 
     public MessageProcessor() {
     }
 
     @Override
-    public void process(Exchange exchange) throws Exception {
+    public void process(final Exchange exchange) throws Exception {
         log.info("Message Body: {}", exchange.getIn().getBody(String.class));
     }
 

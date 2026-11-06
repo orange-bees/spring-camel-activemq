@@ -17,8 +17,11 @@ package com.orangebees.camel.activemq.route;
 
 import com.orangebees.camel.activemq.processor.MessageProcessor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.camel.Exchange;
+import org.apache.camel.ExchangePattern;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,18 +35,58 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class JMSRouteBuilder extends RouteBuilder {
 
+    private final MessageProcessor messageProcessor;
+
+    public JMSRouteBuilder(final MessageProcessor messageProcessor) {
+        this.messageProcessor = messageProcessor;
+    }
+
     @Override
     public void configure() throws Exception {
+        restConfiguration()
+                // turn on openapi api-doc
+                .apiContextPath("/api-doc")
+                .apiProperty("api.title", "Apache Camel REST DSL")
+                .apiProperty("api.version", "1.1.0")
+                .enableCORS(true);
+
+        rest("/say")
+            .get("/hello")
+            .to("direct:hello")
+            .produces("text/plain")
+            .get("/bye")
+            .consumes("application/json")
+            .to("direct:bye")
+            .produces("text/plain")
+            .post("/dumpster")
+            .consumes(MediaType.APPLICATION_XML_VALUE)
+//                .produces(MediaType.TEXT_PLAIN_VALUE)
+//                .outType(String.class)
+            .to("direct:xmlProcessor");
+
+        from("direct:hello")
+            .transform().constant("Hello World\n");
+
+        from("direct:bye")
+            .transform().constant("Bye World\n");
+
+        from("direct:xmlProcessor")
+            .to(ExchangePattern.InOnly, "{{queue.input}}")
+            .process(exchange -> {
+                    exchange.getIn().setBody("", String.class);
+                })
+            .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(200));
+
         from("{{queue.input}}")
-                .routeId(JMSRouteBuilder.class.getSimpleName())
+            .routeId(JMSRouteBuilder.class.getSimpleName())
                 .id("{{queue.input}}")
-                .log(LoggingLevel.INFO, log, "Message received from {{queue.input}}")
+            .log(LoggingLevel.INFO, log, "Message received from {{queue.input}}")
                 .id("{{{queue.input}} logger")
-                .process(new MessageProcessor())
+            .process(messageProcessor)
                 .id(MessageProcessor.class.getSimpleName())
-                .to("{{queue.output}}")
+            .to("{{queue.output}}")
                 .id("{{queue.output}}")
-                .log(LoggingLevel.INFO, log, "Message successfully sent to the {{queue.output}}")
+            .log(LoggingLevel.INFO, log, "Message successfully sent to the {{queue.output}}")
                 .id("{{{queue.output}} logger")
                 .end();
     }

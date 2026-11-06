@@ -17,81 +17,98 @@ package com.orangebees.camel.activemq.integration;
 
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.activemq.ActiveMQConnectionFactory;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.AfterAll;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.BeforeAll;
+import javax.jms.TextMessage;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.UUID;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.support.PropertiesLoaderUtils;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  *
  * @author John Yeary<john.yeary@orangebees.com>
  */
-@Slf4j
+@Testcontainers
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public class JMSRouteBuilderIT {
 
+    private static final Properties TEST_PROPERTIES = loadTestProperties();
+    private static final int BROKER_PORT = Integer.parseInt(Objects.requireNonNull(
+            TEST_PROPERTIES.getProperty("test.activemq.port"), "Missing test.activemq.port"));
+
+    @Container
+    private static final GenericContainer<?> BROKER = new GenericContainer<>(
+            DockerImageName.parse(Objects.requireNonNull(
+                    TEST_PROPERTIES.getProperty("test.activemq.image"), "Missing test.activemq.image")))
+            .withExposedPorts(BROKER_PORT)
+            .waitingFor(Wait.forListeningPort())
+            .withStartupTimeout(Duration.ofSeconds(60));
+
+    @Autowired
     private ConnectionFactory connectionFactory;
 
-    public JMSRouteBuilderIT() {
-    }
-
-    @BeforeAll
-    public static void setUpClass() {
-    }
-
-    @AfterAll
-    public static void tearDownClass() {
-    }
-
-    @BeforeEach
-    public void setUp() {
-        connectionFactory = new ActiveMQConnectionFactory();
-    }
-
-    @AfterEach
-    public void tearDown() {
-    }
-
-    private void jmsMessageProducer() throws Exception {
-
-        try ( Connection connection = connectionFactory.createConnection()) {
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            Destination destination = session.createQueue("inputQueue");
-            MessageProducer messageProducer = session.createProducer(destination);
-            Message msg = session.createTextMessage("Test Message");
-            messageProducer.send(msg);
-            log.info("JMS Message Sent");
+    private static Properties loadTestProperties() {
+        // The static container is configured before Spring creates the test context.
+        try {
+            return PropertiesLoaderUtils.loadProperties(new ClassPathResource("application-test.properties"));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Cannot load application-test.properties", e);
         }
     }
 
-    private Message jmsMessageConsumer() throws Exception {
-        Message message = null;
-
-        try ( Connection connection = connectionFactory.createConnection()) {
-            connection.start();
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            Destination destination = session.createQueue("outputQueue");
-            MessageConsumer messageConsumer = session.createConsumer(destination);
-            message = messageConsumer.receive(1000);
-            session.close();
-        }
-
-        return message;
+    @DynamicPropertySource
+    static void brokerProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.activemq.broker-url",
+                () -> "tcp://" + BROKER.getHost() + ":" + BROKER.getMappedPort(BROKER_PORT)
+                        + "?connectionTimeout=5000");
+        registry.add("spring.activemq.user", () -> "admin");
+        registry.add("spring.activemq.password", () -> "admin");
+        registry.add("queue.input", () -> "jms:inputQueue");
+        registry.add("queue.output", () -> "jms:outputQueue");
     }
 
     @Test
-    @SuppressWarnings("unchecked")
+    @Timeout(30)
     public void processJMSRouteTest() throws Exception {
-        jmsMessageProducer();
-        assertNotNull(jmsMessageConsumer());
+        String body = "Test Message " + UUID.randomUUID();
+
+        try (Connection connection = connectionFactory.createConnection();
+                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                MessageConsumer consumer = session.createConsumer(session.createQueue("outputQueue"));
+                MessageProducer producer = session.createProducer(session.createQueue("inputQueue"))) {
+            connection.start();
+            producer.send(session.createTextMessage(body));
+
+            Message message = consumer.receive(10000);
+            assertNotNull(message, "Camel did not forward the message within 10 seconds");
+            assertInstanceOf(TextMessage.class, message, "Expected a JMS text message");
+            assertEquals(body, ((TextMessage) message).getText());
+        }
     }
 
 }

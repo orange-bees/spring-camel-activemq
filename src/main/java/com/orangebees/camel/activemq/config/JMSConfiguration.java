@@ -15,11 +15,12 @@
  */
 package com.orangebees.camel.activemq.config;
 
-import javax.jms.ConnectionFactory;
 import org.apache.camel.component.jms.JmsComponent;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.connection.JmsTransactionManager;
+
+import javax.jms.ConnectionFactory;
 
 /**
  * Add JMS specific configuration based on Spring Boot provided
@@ -31,6 +32,13 @@ import org.springframework.jms.connection.JmsTransactionManager;
 @Configuration
 public class JMSConfiguration {
 
+    /**
+     * Configure a {@link JmsTransactionManager} for use with the
+     * {@link JmsComponent}.
+     *
+     * @param connectionFactory The {@link ConnectionFactory} to use.
+     * @return A configured {@link JmsTransactionManager}.
+     */
     @Bean
     public JmsTransactionManager jmsTransactionManager(final ConnectionFactory connectionFactory) {
         JmsTransactionManager jmsTransactionManager = new JmsTransactionManager();
@@ -38,11 +46,17 @@ public class JMSConfiguration {
         return jmsTransactionManager;
     }
 
+    /**
+     * Configure a {@link JmsComponent} for use with the {@link JmsTransactionManager}.
+     *
+     * @param connectionFactory     The {@link ConnectionFactory} to use.
+     * @param jmsTransactionManager The {@link JmsTransactionManager} to use.
+     * @return A configured {@link JmsComponent}.
+     */
     @Bean
     public JmsComponent jmsComponent(final ConnectionFactory connectionFactory, final JmsTransactionManager jmsTransactionManager) {
-        JmsComponent jmsComponent = JmsComponent
+        return JmsComponent
                 .jmsComponentTransacted(connectionFactory, jmsTransactionManager);
-        return jmsComponent;
     }
 
 }
